@@ -1,0 +1,6 @@
+{
+  "name": "DropQR",
+  "description": "Share Data Securely. No Internet. Just Scan & Transfer using animated QR codes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
