@@ -16,7 +16,10 @@ data class UserPreferences(
     val requireConfirmationBeforeSave: Boolean = false,
     val autoDeleteTempData: Boolean = true,
     val darkModePreference: String = "SYSTEM", // SYSTEM, DARK, LIGHT
-    val onboardingCompleted: Boolean = false
+    val onboardingCompleted: Boolean = false,
+    val appLockEnabled: Boolean = false,
+    val appLockPin: String = "",
+    val autoSaveToGallery: Boolean = true
 )
 
 class UserPreferencesRepository(context: Context) {
@@ -37,8 +40,21 @@ class UserPreferencesRepository(context: Context) {
             requireConfirmationBeforeSave = prefs.getBoolean("require_confirm_save", false),
             autoDeleteTempData = prefs.getBoolean("auto_delete_temp", true),
             darkModePreference = prefs.getString("dark_mode_pref", "SYSTEM") ?: "SYSTEM",
-            onboardingCompleted = prefs.getBoolean("onboarding_completed", false)
+            onboardingCompleted = prefs.getBoolean("onboarding_completed", false),
+            appLockEnabled = prefs.getBoolean("app_lock_enabled", false),
+            appLockPin = prefs.getString("app_lock_pin", "") ?: "",
+            autoSaveToGallery = prefs.getBoolean("auto_save_to_gallery", true)
         )
+    }
+
+    fun setAutoSaveToGallery(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_save_to_gallery", enabled).apply()
+        _preferencesFlow.value = _preferencesFlow.value.copy(autoSaveToGallery = enabled)
+    }
+
+    fun setAppLockEnabled(enabled: Boolean, pin: String = "") {
+        prefs.edit().putBoolean("app_lock_enabled", enabled).putString("app_lock_pin", pin).apply()
+        _preferencesFlow.value = _preferencesFlow.value.copy(appLockEnabled = enabled, appLockPin = pin)
     }
 
     fun setFrameSpeedMs(speedMs: Int) {

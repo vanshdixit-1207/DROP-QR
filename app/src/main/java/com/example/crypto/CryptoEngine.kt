@@ -30,6 +30,20 @@ object CryptoEngine {
     }
 
     /**
+     * Derives a 256-bit AES key from a user-supplied password / PIN with key stretching.
+     */
+    fun derivePasswordKey(password: String, salt: String = "DropQR-AirGap-UserPassword-v1"): ByteArray {
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(salt.toByteArray(Charsets.UTF_8))
+        var key = digest.digest(password.toByteArray(Charsets.UTF_8))
+        for (i in 0 until 5000) {
+            digest.reset()
+            key = digest.digest(key)
+        }
+        return key
+    }
+
+    /**
      * Derives a 256-bit AES key from a transfer ID and salt.
      */
     fun deriveKey(seed: String, salt: String = "DropQR-AirGap-Salt-v1"): ByteArray {

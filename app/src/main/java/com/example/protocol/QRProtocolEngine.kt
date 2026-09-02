@@ -7,6 +7,9 @@ import org.json.JSONObject
 import java.nio.ByteBuffer
 import java.util.UUID
 
+class PasswordRequiredException(val hint: String = "") : Exception("This transfer is protected with a custom Password / PIN")
+class IncorrectPasswordException(message: String = "Incorrect decryption password / PIN. Please try again.") : Exception(message)
+
 object QRProtocolEngine {
 
     const val PROTOCOL_VERSION = "DQR1"
@@ -73,10 +76,14 @@ object QRProtocolEngine {
         files: List<TransferFileItem> = emptyList(),
         chunkSizeBytes: Int = DEFAULT_CHUNK_SIZE_BYTES,
         encrypt: Boolean = true,
-        compress: Boolean = true
+        compress: Boolean = true,
+        customPassword: String? = null,
+        passwordHint: String? = null,
+        timeLockUntil: Long = 0L
     ): Pair<TransferManifest, List<QRFrame>> {
         val transferId = UUID.randomUUID().toString().take(8).uppercase()
         val overallSha256 = CryptoEngine.computeSha256(payloadBytes)
+        val hasCustomPassword = !customPassword.isNullOrBlank()
 
         // 1. Build Header JSON
         val headerJson = JSONObject().apply {
@@ -86,6 +93,13 @@ object QRProtocolEngine {
             put("size", payloadBytes.size.toLong())
             put("sha256", overallSha256)
             put("time", System.currentTimeMillis())
+            put("pwd", hasCustomPassword)
+            if (timeLockUntil > 0L) {
+                put("timeLock", timeLockUntil)
+            }
+            if (hasCustomPassword && !passwordHint.isNullOrBlank()) {
+                put("pwdHint", passwordHint)
+            }
             val filesArray = JSONArray()
             files.forEach { file ->
                 val fObj = JSONObject().apply {
@@ -118,8 +132,12 @@ object QRProtocolEngine {
 
         // 3. Encryption
         var isEncrypted = false
-        if (encrypt) {
-            val sessionKey = CryptoEngine.deriveKey(transferId)
+        if (encrypt || hasCustomPassword) {
+            val sessionKey = if (hasCustomPassword) {
+                CryptoEngine.derivePasswordKey(customPassword!!, "DropQR-AirGap-$transferId")
+            } else {
+                CryptoEngine.deriveKey(transferId)
+            }
             packagedBytes = CryptoEngine.encryptAesGcm(packagedBytes, sessionKey)
             isEncrypted = true
         }
@@ -163,7 +181,10 @@ object QRProtocolEngine {
             isEncrypted = isEncrypted,
             isCompressed = isCompressed,
             overallSha256 = overallSha256,
-            files = files
+            files = files,
+            isPasswordProtected = hasCustomPassword,
+            passwordHint = passwordHint ?: "",
+            timeLockUntil = timeLockUntil
         )
 
         return Pair(manifest, qrFrames)
@@ -176,9 +197,10 @@ object QRProtocolEngine {
         transferId: String,
         receivedChunksMap: Map<Int, String>, // 1-based index -> Base64 payload
         totalFrames: Int,
-        isEncrypted: Boolean = true
+        isEncrypted: Boolean = true,
+        customPassword: String? = null
     ): UnpackedPayload {
-        require(receivedChunksMap.size == totalFrames) { "Cannot unpack incomplete transfer ($receivedChunksMap.size / $totalFrames frames)" }
+        require(receivedChunksMap.size == totalFrames) { "Cannot unpack incomplete transfer (${receivedChunksMap.size} / $totalFrames frames)" }
 
         // 1. Reassemble chunks in exact order
         val allChunkBytes = mutableListOf<ByteArray>()
@@ -199,8 +221,23 @@ object QRProtocolEngine {
 
         // 2. Decrypt if needed
         if (isEncrypted) {
-            val sessionKey = CryptoEngine.deriveKey(transferId)
-            currentBytes = CryptoEngine.decryptAesGcm(currentBytes, sessionKey)
+            if (!customPassword.isNullOrBlank()) {
+                try {
+                    val passKey = CryptoEngine.derivePasswordKey(customPassword, "DropQR-AirGap-$transferId")
+                    currentBytes = CryptoEngine.decryptAesGcm(currentBytes, passKey)
+                } catch (e: Exception) {
+                    throw IncorrectPasswordException()
+                }
+            } else {
+                try {
+                    // Try default transfer key first
+                    val sessionKey = CryptoEngine.deriveKey(transferId)
+                    currentBytes = CryptoEngine.decryptAesGcm(currentBytes, sessionKey)
+                } catch (e: Exception) {
+                    // If default key failed, it is likely password protected
+                    throw PasswordRequiredException()
+                }
+            }
         }
 
         // 3. Try GZIP decompress (auto-detect GZIP magic header 0x1F, 0x8B)
@@ -213,8 +250,16 @@ object QRProtocolEngine {
         }
 
         // 4. Unpack Package Buffer [4 bytes header length] + [Header JSON] + [Payload]
+        if (currentBytes.size < 4) {
+            throw IllegalStateException("Decrypted payload data is corrupted or incomplete")
+        }
+
         val buffer = ByteBuffer.wrap(currentBytes)
         val headerLength = buffer.int
+        if (headerLength <= 0 || headerLength > buffer.remaining()) {
+            throw IllegalStateException("Corrupted package header length")
+        }
+
         val headerBytes = ByteArray(headerLength)
         buffer.get(headerBytes)
 
@@ -222,6 +267,9 @@ object QRProtocolEngine {
         val typeCode = headerJson.optString("type", "FIL")
         val title = headerJson.optString("title", "Transferred Item")
         val originalSha256 = headerJson.optString("sha256", "")
+        val isPwd = headerJson.optBoolean("pwd", false)
+        val pwdHint = headerJson.optString("pwdHint", "")
+        val timeLockUntil = headerJson.optLong("timeLock", 0L)
 
         val payloadBytes = ByteArray(buffer.remaining())
         buffer.get(payloadBytes)
@@ -253,7 +301,10 @@ object QRProtocolEngine {
             payloadBytes = payloadBytes,
             files = filesList,
             sha256Verified = sha256Valid,
-            computedSha256 = calculatedSha256
+            computedSha256 = calculatedSha256,
+            isPasswordProtected = isPwd,
+            passwordHint = pwdHint,
+            timeLockUntil = timeLockUntil
         )
     }
 }
@@ -265,5 +316,8 @@ data class UnpackedPayload(
     val payloadBytes: ByteArray,
     val files: List<TransferFileItem>,
     val sha256Verified: Boolean,
-    val computedSha256: String
+    val computedSha256: String,
+    val isPasswordProtected: Boolean = false,
+    val passwordHint: String = "",
+    val timeLockUntil: Long = 0L
 )

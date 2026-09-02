@@ -5,7 +5,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+
+val LocalIsDark = staticCompositionLocalOf { false }
 
 private val DropQRDarkColorScheme = darkColorScheme(
     primary = BentoPrimaryBlueDark,
@@ -60,9 +64,11 @@ fun DropQRTheme(
 ) {
     val colorScheme = if (darkTheme) DropQRDarkColorScheme else DropQRLightColorScheme
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(LocalIsDark provides darkTheme) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }

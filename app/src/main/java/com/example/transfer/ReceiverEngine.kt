@@ -6,11 +6,14 @@ import com.example.data.TransferEntity
 import com.example.data.TransferRepository
 import com.example.data.TransferStatus
 import com.example.protocol.ContactPayload
+import com.example.protocol.IncorrectPasswordException
+import com.example.protocol.PasswordRequiredException
 import com.example.protocol.QRFrame
 import com.example.protocol.QRProtocolEngine
 import com.example.protocol.TransferFileItem
 import com.example.protocol.TransferPayloadType
 import com.example.protocol.UnpackedPayload
+import com.example.util.MediaExportHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +31,7 @@ enum class ReceiverStateStatus {
     RECEIVING,
     VERIFYING,
     DECRYPTING,
+    AWAITING_PASSWORD,
     SAVING,
     SUCCESS,
     ERROR
@@ -47,13 +51,20 @@ data class ReceivedTransferResult(
     val textContent: String? = null,
     val contactData: ContactPayload? = null,
     val savedFiles: List<SavedFileItem> = emptyList(),
+    val audioFilePath: String? = null,
+    val cryptoDetails: String? = null,
     val totalBytes: Long = 0L,
     val totalFrames: Int = 1,
     val sha256: String = "",
     val isEncrypted: Boolean = true,
+    val isPasswordProtected: Boolean = false,
+    val timeLockUntil: Long = 0L,
     val transferDurationMs: Long = 0L,
     val savedHistoryId: Long = 0L
-)
+) {
+    val isTimeLocked: Boolean
+        get() = timeLockUntil > System.currentTimeMillis()
+}
 
 data class ReceiverUiState(
     val status: ReceiverStateStatus = ReceiverStateStatus.IDLE,
@@ -62,12 +73,16 @@ data class ReceiverUiState(
     val title: String = "",
     val receivedFramesCount: Int = 0,
     val totalFrames: Int = 0,
+    val receivedFrameIndices: Set<Int> = emptySet(),
+    val lastScannedFrameIndex: Int? = null,
     val missingFrames: List<Int> = emptyList(),
     val progressPercent: Int = 0,
     val speedFps: Float = 0f,
     val duplicateFramesCount: Int = 0,
     val result: ReceivedTransferResult? = null,
     val errorMessage: String = "",
+    val passwordHint: String = "",
+    val passwordError: String = "",
     val canResume: Boolean = false
 )
 
@@ -100,10 +115,6 @@ class ReceiverEngine(
     private suspend fun handleFrame(frame: QRFrame) {
         // If this is a new transfer or first frame
         if (activeTransferId == null || activeTransferId != frame.transferId) {
-            if (activeTransferId != null && chunksMap.size > 0 && chunksMap.size < activeTotalFrames) {
-                // Different transfer detected while in-progress
-                // Keep existing transfer state unless user decides to switch or new frame has high index
-            }
             activeTransferId = frame.transferId
             activeTotalFrames = frame.totalFrames
             activeType = frame.type
@@ -120,6 +131,8 @@ class ReceiverEngine(
                     title = "Transfer in progress...",
                     receivedFramesCount = 0,
                     totalFrames = frame.totalFrames,
+                    receivedFrameIndices = emptySet(),
+                    lastScannedFrameIndex = frame.frameIndex,
                     missingFrames = (1..frame.totalFrames).toList(),
                     progressPercent = 0,
                     speedFps = 0f
@@ -130,6 +143,12 @@ class ReceiverEngine(
         // Check duplicate
         if (chunksMap.containsKey(frame.frameIndex)) {
             duplicateCount++
+            withContext(Dispatchers.Main) {
+                _uiState.value = _uiState.value.copy(
+                    lastScannedFrameIndex = frame.frameIndex,
+                    duplicateFramesCount = duplicateCount
+                )
+            }
             return
         }
 
@@ -153,6 +172,8 @@ class ReceiverEngine(
                 status = ReceiverStateStatus.RECEIVING,
                 receivedFramesCount = receivedCount,
                 totalFrames = total,
+                receivedFrameIndices = chunksMap.keys.toSet(),
+                lastScannedFrameIndex = frame.frameIndex,
                 missingFrames = missing,
                 progressPercent = percent,
                 speedFps = fps,
@@ -166,12 +187,19 @@ class ReceiverEngine(
         }
     }
 
-    private suspend fun finishReassembly() {
+    suspend fun submitPassword(password: String) {
+        finishReassembly(customPassword = password)
+    }
+
+    private suspend fun finishReassembly(customPassword: String? = null) {
         val transferId = activeTransferId ?: return
         val totalFrames = activeTotalFrames
 
         withContext(Dispatchers.Main) {
-            _uiState.value = _uiState.value.copy(status = ReceiverStateStatus.VERIFYING)
+            _uiState.value = _uiState.value.copy(
+                status = ReceiverStateStatus.VERIFYING,
+                passwordError = ""
+            )
         }
 
         try {
@@ -184,7 +212,8 @@ class ReceiverEngine(
                     transferId = transferId,
                     receivedChunksMap = HashMap(chunksMap),
                     totalFrames = totalFrames,
-                    isEncrypted = true
+                    isEncrypted = true,
+                    customPassword = customPassword
                 )
             }
 
@@ -200,7 +229,23 @@ class ReceiverEngine(
                 _uiState.value = _uiState.value.copy(
                     status = ReceiverStateStatus.SUCCESS,
                     result = result,
-                    progressPercent = 100
+                    progressPercent = 100,
+                    passwordError = ""
+                )
+            }
+        } catch (pe: PasswordRequiredException) {
+            withContext(Dispatchers.Main) {
+                _uiState.value = _uiState.value.copy(
+                    status = ReceiverStateStatus.AWAITING_PASSWORD,
+                    passwordHint = pe.hint,
+                    passwordError = ""
+                )
+            }
+        } catch (ie: IncorrectPasswordException) {
+            withContext(Dispatchers.Main) {
+                _uiState.value = _uiState.value.copy(
+                    status = ReceiverStateStatus.AWAITING_PASSWORD,
+                    passwordError = "Incorrect password/PIN. Please try again."
                 )
             }
         } catch (e: Exception) {
@@ -223,17 +268,31 @@ class ReceiverEngine(
         var contactPayload: ContactPayload? = null
         val savedFiles = mutableListOf<SavedFileItem>()
         var primaryFilePath: String? = null
+        var audioFilePath: String? = null
+        var cryptoDetails: String? = null
 
         when (unpacked.type) {
             TransferPayloadType.TEXT, TransferPayloadType.URL -> {
                 val text = String(unpacked.payloadBytes, Charsets.UTF_8)
                 textContent = text
             }
+            TransferPayloadType.AUDIO -> {
+                val safeName = "${unpacked.transferId}_voice_memo.m4a"
+                val audioFile = File(transferDir, safeName)
+                FileOutputStream(audioFile).use { it.write(unpacked.payloadBytes) }
+                audioFilePath = audioFile.absolutePath
+                primaryFilePath = audioFile.absolutePath
+                savedFiles.add(SavedFileItem(safeName, audioFile.length(), "audio/mp4", audioFile.absolutePath))
+            }
+            TransferPayloadType.CRYPTO -> {
+                val text = String(unpacked.payloadBytes, Charsets.UTF_8)
+                textContent = text
+                cryptoDetails = text
+            }
             TransferPayloadType.CONTACT -> {
                 val vcard = String(unpacked.payloadBytes, Charsets.UTF_8)
                 textContent = vcard
                 contactPayload = ContactPayload.fromVCard(vcard)
-                // Also save vcf file
                 val safeName = "${unpacked.title.replace(Regex("[^a-zA-Z0-9._-]"), "_")}.vcf"
                 val file = File(transferDir, "${unpacked.transferId}_$safeName")
                 FileOutputStream(file).use { it.write(unpacked.payloadBytes) }
@@ -248,9 +307,10 @@ class ReceiverEngine(
                 val mime = unpacked.files.firstOrNull()?.mimeType ?: "application/octet-stream"
                 savedFiles.add(SavedFileItem(safeName, targetFile.length(), mime, targetFile.absolutePath))
                 primaryFilePath = targetFile.absolutePath
+                // Auto export to device storage (Gallery/Downloads)
+                MediaExportHelper.saveFileToDevice(context, targetFile, originalFileName, mime)
             }
             TransferPayloadType.MULTI_FILE -> {
-                // Unpack sequential files from payload bytes
                 val buffer = java.nio.ByteBuffer.wrap(unpacked.payloadBytes)
                 unpacked.files.forEach { fileMeta ->
                     val fileLength = fileMeta.fileSize.toInt()
@@ -261,6 +321,8 @@ class ReceiverEngine(
                         val targetFile = File(transferDir, "${unpacked.transferId}_$safeName")
                         FileOutputStream(targetFile).use { it.write(fileBytes) }
                         savedFiles.add(SavedFileItem(safeName, targetFile.length(), fileMeta.mimeType, targetFile.absolutePath))
+                        // Auto export to device storage (Gallery/Downloads)
+                        MediaExportHelper.saveFileToDevice(context, targetFile, fileMeta.fileName, fileMeta.mimeType)
                     }
                 }
                 primaryFilePath = savedFiles.firstOrNull()?.localPath
@@ -277,6 +339,8 @@ class ReceiverEngine(
                 TransferPayloadType.TEXT -> textContent?.take(60) ?: ""
                 TransferPayloadType.URL -> textContent ?: ""
                 TransferPayloadType.CONTACT -> contactPayload?.name ?: ""
+                TransferPayloadType.AUDIO -> "Voice Memo (${unpacked.payloadBytes.size / 1024} KB)"
+                TransferPayloadType.CRYPTO -> "Crypto Air-Gapped Signature"
                 TransferPayloadType.FILE -> "${savedFiles.size} file (${unpacked.payloadBytes.size} bytes)"
                 TransferPayloadType.MULTI_FILE -> "${savedFiles.size} files (${unpacked.payloadBytes.size} bytes)"
             },
@@ -298,10 +362,14 @@ class ReceiverEngine(
             textContent = textContent,
             contactData = contactPayload,
             savedFiles = savedFiles,
+            audioFilePath = audioFilePath,
+            cryptoDetails = cryptoDetails,
             totalBytes = unpacked.payloadBytes.size.toLong(),
             totalFrames = totalFrames,
             sha256 = unpacked.computedSha256,
             isEncrypted = true,
+            isPasswordProtected = unpacked.isPasswordProtected,
+            timeLockUntil = unpacked.timeLockUntil,
             transferDurationMs = durationMs,
             savedHistoryId = historyId
         )

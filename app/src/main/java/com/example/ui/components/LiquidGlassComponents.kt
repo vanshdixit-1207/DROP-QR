@@ -88,6 +88,7 @@ import com.example.ui.theme.BentoTextSecondaryDark
 import com.example.ui.theme.BentoTextSecondaryLight
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldGreen
+import com.example.ui.theme.LocalIsDark
 import com.example.ui.theme.PurpleSecurity
 
 @Composable
@@ -95,7 +96,7 @@ fun AmbientBackground(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
 
     Box(
         modifier = modifier
@@ -171,7 +172,7 @@ fun BentoCard(
     testTag: String = "bento_card",
     content: @Composable () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
     val defaultBg = backgroundColor ?: if (isDark) BentoSurfaceDark else BentoSurfaceLight
     val defaultBorder = borderStroke ?: BorderStroke(
         1.dp,
@@ -217,7 +218,7 @@ fun GlassCard(
     testTag: String = "glass_card",
     content: @Composable () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
     val defaultBg = backgroundColor ?: if (isDark) BentoSurfaceDark else BentoSurfaceLight
     val stroke = if (borderBrush != null) {
         BorderStroke(1.dp, borderBrush)
@@ -248,7 +249,7 @@ fun BentoPillBadge(
     textColor: Color? = null,
     icon: ImageVector? = null
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
     val bg = backgroundColor ?: if (isDark) Color(0x33FFFFFF) else Color(0x80FFFFFF)
     val txt = textColor ?: if (isDark) Color.White else BentoPrimaryBlue
 
@@ -298,7 +299,7 @@ fun BentoButton(
     enabled: Boolean = true,
     testTag: String = "bento_button"
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
 
     if (isPrimary) {
         Button(
@@ -410,7 +411,7 @@ fun GlassIconButton(
     tint: Color = MaterialTheme.colorScheme.onSurface,
     testTag: String = "glass_icon_button"
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
 
     Box(
         modifier = modifier
@@ -442,7 +443,7 @@ fun GlassIconButton(
 fun AirGapBadge(
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
 
     Box(
         modifier = modifier
@@ -485,7 +486,7 @@ fun AirGapBadge(
 fun EncryptionBadge(
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
 
     Box(
         modifier = modifier
@@ -496,7 +497,7 @@ fun EncryptionBadge(
                 RoundedCornerShape(50)
             )
             .padding(horizontal = 10.dp, vertical = 5.dp)
-    ) {
+        ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -525,7 +526,7 @@ fun GlassSegmentedControl(
     onItemSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
 
     Box(
         modifier = modifier
@@ -589,7 +590,7 @@ fun GlassProgressBar(
     brush: Brush = BentoBlueGradient,
     height: Dp = 8.dp
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
     val animatedProgress by animateFloatAsState(
         targetValue = progress.coerceIn(0f, 1f),
         animationSpec = tween(300, easing = LinearEasing),

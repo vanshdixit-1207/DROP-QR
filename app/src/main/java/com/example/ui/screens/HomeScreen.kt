@@ -22,23 +22,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Contacts
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Notes
-import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,8 +39,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -65,9 +53,6 @@ import com.example.ui.theme.BentoBlueGradient
 import com.example.ui.theme.BentoCyan
 import com.example.ui.theme.BentoCyanDark
 import com.example.ui.theme.BentoCyanText
-import com.example.ui.theme.BentoDarkNavy
-import com.example.ui.theme.BentoDarkNavyDark
-import com.example.ui.theme.BentoDarkNavyText
 import com.example.ui.theme.BentoEmerald
 import com.example.ui.theme.BentoEmeraldDark
 import com.example.ui.theme.BentoEmeraldText
@@ -90,6 +75,7 @@ import com.example.ui.theme.BentoTextSecondaryDark
 import com.example.ui.theme.BentoTextSecondaryLight
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldGreen
+import com.example.ui.theme.LocalIsDark
 import com.example.ui.theme.PurpleSecurity
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -103,78 +89,55 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
-    val dateStr = remember {
-        SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
-    }
+    val isDark = LocalIsDark.current
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .statusBarsPadding(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Bento Header (Greeting & Avatar Badge)
+        // 1. Header (Clean DropQR branding + 100% Offline Air-Gapped status)
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
                     Text(
-                        text = dateStr.uppercase(),
+                        text = "AIR-GAPPED OFFLINE TRANSFER",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.8.sp,
-                        color = if (isDark) BentoTextSecondaryDark else BentoTextSecondaryLight
+                        letterSpacing = 1.sp,
+                        color = if (isDark) BentoPrimaryBlueDark else BentoPrimaryBlue
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "DropQR Air-Gap",
-                        fontSize = 26.sp,
+                        text = "DropQR",
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.5).sp,
                         color = if (isDark) BentoTextPrimaryDark else BentoTextPrimaryLight
                     )
                 }
 
-                // Avatar / Air-Gap Status Indicator
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(if (isDark) BentoSkyDark else BentoSky)
-                        .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = ripple(bounded = true),
-                            onClick = onNavigateToSettings
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.WifiOff,
-                        contentDescription = "Offline Mode",
-                        tint = if (isDark) BentoPrimaryBlueDark else BentoSkyText,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                AirGapBadge()
             }
         }
 
-        // 2. Bento Hero Tile 1: [SEND AIR-GAPPED DATA] (Span 2)
+        // 2. Primary Action 1: SEND (Hero Bento Card)
         item {
             BentoCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(170.dp),
-                shape = RoundedCornerShape(28.dp),
+                    .height(160.dp),
+                shape = RoundedCornerShape(26.dp),
                 backgroundColor = if (isDark) BentoSkyDark else BentoSky,
-                elevation = 2.dp,
+                elevation = 3.dp,
                 onClick = { onNavigateToSend(null) },
                 testTag = "home_send_card"
             ) {
@@ -187,247 +150,127 @@ fun HomeScreen(
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         BentoPillBadge(
-                            text = "Next Up • Send",
-                            backgroundColor = if (isDark) Color(0x33FFFFFF) else Color(0x70FFFFFF),
-                            textColor = if (isDark) BentoPrimaryBlueDark else BentoSkyText
+                            text = "SEND DATA",
+                            backgroundColor = if (isDark) Color(0x33FFFFFF) else Color(0x80FFFFFF),
+                            textColor = if (isDark) BentoPrimaryBlueDark else BentoSkyText,
+                            icon = Icons.Default.Send
                         )
 
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(44.dp)
                                 .clip(CircleShape)
-                                .background(if (isDark) Color(0x33FFFFFF) else Color.White),
+                                .background(if (isDark) BentoPrimaryBlueDark else BentoPrimaryBlue),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Send,
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                                 contentDescription = "Send",
-                                tint = if (isDark) BentoPrimaryBlueDark else BentoPrimaryBlue,
-                                modifier = Modifier.size(20.dp)
+                                tint = if (isDark) Color(0xFF001D35) else Color.White,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
 
                     Column {
                         Text(
-                            text = "Broadcast Data Stream",
-                            fontSize = 20.sp,
+                            text = "Send via QR Code",
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isDark) Color.White else BentoSkyText
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(modifier = Modifier.height(3.dp))
                         Text(
-                            text = "Encode files & notes into high-speed animated QR",
+                            text = "Encode notes, links, or files into animated QR frames",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
-                            color = if (isDark) BentoSkyText.copy(alpha = 0.8f) else Color(0xFF1E3A8A).copy(alpha = 0.85f)
+                            color = if (isDark) Color(0xFFBAE6FD) else Color(0xFF1E3A8A).copy(alpha = 0.85f)
                         )
                     }
                 }
             }
         }
 
-        // 3. Bento 2-Column Grid (Row 1): [Receive & Scan] (Col 1) + [Security AES-256] (Col 2)
+        // 3. Primary Action 2: RECEIVE (Emerald Hero Bento Card)
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            BentoCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp),
+                shape = RoundedCornerShape(26.dp),
+                backgroundColor = if (isDark) BentoEmeraldDark else BentoEmerald,
+                elevation = 3.dp,
+                onClick = onNavigateToReceive,
+                testTag = "home_receive_card"
             ) {
-                // Receive & Scan Tile (Emerald / Mint Bento)
-                BentoCard(
+                Column(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(150.dp),
-                    shape = RoundedCornerShape(26.dp),
-                    backgroundColor = if (isDark) BentoEmeraldDark else BentoEmerald,
-                    elevation = 2.dp,
-                    onClick = onNavigateToReceive,
-                    testTag = "home_receive_card"
+                        .fillMaxSize()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.SpaceBetween
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isDark) Color(0x33FFFFFF) else Color.White),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.QrCodeScanner,
-                                    contentDescription = null,
-                                    tint = if (isDark) EmeraldGreen else BentoEmeraldText,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            Text(
-                                text = "Receive",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) EmeraldGreen else BentoEmeraldText
-                            )
-                        }
+                        BentoPillBadge(
+                            text = "RECEIVE DATA",
+                            backgroundColor = if (isDark) Color(0x33FFFFFF) else Color(0x80FFFFFF),
+                            textColor = if (isDark) EmeraldGreen else BentoEmeraldText,
+                            icon = Icons.Default.QrCodeScanner
+                        )
 
-                        Column {
-                            Text(
-                                text = "Scan QR",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) Color.White else BentoEmeraldText
-                            )
-                            Text(
-                                text = "Live Viewfinder",
-                                fontSize = 12.sp,
-                                color = if (isDark) EmeraldGreen.copy(alpha = 0.8f) else BentoEmeraldText.copy(alpha = 0.75f)
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) EmeraldGreen else Color(0xFF059669)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "Scan",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
-                }
 
-                // Security & Privacy Tile (Lavender Bento)
-                BentoCard(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(150.dp),
-                    shape = RoundedCornerShape(26.dp),
-                    backgroundColor = if (isDark) BentoLavenderDark else BentoLavender,
-                    elevation = 2.dp,
-                    onClick = onNavigateToSettings,
-                    testTag = "home_security_card"
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isDark) Color(0x33FFFFFF) else Color.White),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = null,
-                                    tint = if (isDark) PurpleSecurity else BentoLavenderText,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            Text(
-                                text = "Security",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) PurpleSecurity else BentoLavenderText
-                            )
-                        }
-
-                        Column {
-                            Text(
-                                text = "AES-256",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) Color.White else BentoLavenderText
-                            )
-                            Text(
-                                text = "GCM Encrypted",
-                                fontSize = 12.sp,
-                                color = if (isDark) PurpleSecurity.copy(alpha = 0.8f) else BentoLavenderText.copy(alpha = 0.75f)
-                            )
-                        }
+                    Column {
+                        Text(
+                            text = "Scan & Receive",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color.White else BentoEmeraldText
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = "Open camera scanner to read & reconstruct incoming data",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isDark) Color(0xFFA7F3D0) else BentoEmeraldText.copy(alpha = 0.85f)
+                        )
                     }
                 }
             }
         }
 
-        // 4. Bento 2-Column Grid (Row 2): [Speed Tuning] (Col 1) + [Transfer History] (Col 2)
+        // 4. Secondary Row: HISTORY & SETTINGS (2 Balanced Bento Cards)
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Speed Tuning Tile (Cyan Bento)
+                // History Card
                 BentoCard(
                     modifier = Modifier
                         .weight(1f)
                         .height(130.dp),
-                    shape = RoundedCornerShape(26.dp),
-                    backgroundColor = if (isDark) BentoCyanDark else BentoCyan,
-                    elevation = 2.dp,
-                    onClick = onNavigateToSettings,
-                    testTag = "home_speed_card"
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isDark) Color(0x33FFFFFF) else Color.White),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Speed,
-                                    contentDescription = null,
-                                    tint = if (isDark) ElectricCyan else BentoCyanText,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            Text(
-                                text = "Engine",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) ElectricCyan else BentoCyanText
-                            )
-                        }
-
-                        Column {
-                            Text(
-                                text = "120 ms",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) Color.White else BentoCyanText
-                            )
-                            Text(
-                                text = "~8.3 FPS Rate",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) ElectricCyan.copy(alpha = 0.8f) else BentoCyanText.copy(alpha = 0.75f)
-                            )
-                        }
-                    }
-                }
-
-                // History & Logs Tile (Warm Orange Bento)
-                BentoCard(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(130.dp),
-                    shape = RoundedCornerShape(26.dp),
+                    shape = RoundedCornerShape(24.dp),
                     backgroundColor = if (isDark) BentoOrangeDark else BentoOrange,
                     elevation = 2.dp,
                     onClick = onNavigateToHistory,
@@ -439,160 +282,94 @@ fun HomeScreen(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0x33FFFFFF) else Color.White),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isDark) Color(0x33FFFFFF) else Color.White),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.History,
-                                    contentDescription = null,
-                                    tint = if (isDark) Color(0xFFFB923C) else BentoOrangeText,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            Text(
-                                text = "History",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) Color(0xFFFB923C) else BentoOrangeText
+                            Icon(
+                                imageVector = Icons.Default.History,
+                                contentDescription = "History",
+                                tint = if (isDark) Color(0xFFFB923C) else BentoOrangeText,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
                         Column {
                             Text(
-                                text = "Logs",
+                                text = "History",
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isDark) Color.White else BentoOrangeText
                             )
                             Text(
-                                text = "View All Items",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) Color(0xFFFB923C).copy(alpha = 0.8f) else BentoOrangeText.copy(alpha = 0.75f)
+                                text = "Transfer Logs",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (isDark) Color(0xFFFDBA74) else BentoOrangeText.copy(alpha = 0.8f)
                             )
                         }
                     }
                 }
-            }
-        }
 
-        // 5. Bento Hero Tile 3: [DEEP NAVY QUICK SEND HUB] (Span 2)
-        item {
-            BentoCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp),
-                backgroundColor = if (isDark) BentoDarkNavyDark else BentoDarkNavy,
-                elevation = 4.dp
-            ) {
-                Column(
+                // Settings Card
+                BentoCard(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                        .weight(1f)
+                        .height(130.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    backgroundColor = if (isDark) BentoLavenderDark else BentoLavender,
+                    elevation = 2.dp,
+                    onClick = onNavigateToSettings,
+                    testTag = "home_settings_card"
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0x33FFFFFF) else Color.White),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF38BDF8))
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = if (isDark) PurpleSecurity else BentoLavenderText,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = "Settings",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else BentoLavenderText
                             )
                             Text(
-                                text = "QUICK SEND HUB",
+                                text = "Speed & Security",
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.8.sp,
-                                color = Color.White
+                                fontWeight = FontWeight.Medium,
+                                color = if (isDark) Color(0xFFDDD6FE) else BentoLavenderText.copy(alpha = 0.8f)
                             )
                         }
-
-                        Text(
-                            text = "Select Type",
-                            fontSize = 11.sp,
-                            color = Color.White.copy(alpha = 0.6f)
-                        )
-                    }
-
-                    // 3-Column Bento Inner Tiles Row 1
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        BentoDarkQuickTile(
-                            title = "Note",
-                            icon = Icons.Default.Notes,
-                            iconBg = Color(0xFF1E3A8A),
-                            modifier = Modifier.weight(1f),
-                            onClick = { onNavigateToSend(TransferPayloadType.TEXT) }
-                        )
-                        BentoDarkQuickTile(
-                            title = "Link",
-                            icon = Icons.Default.Link,
-                            iconBg = Color(0xFF065F46),
-                            modifier = Modifier.weight(1f),
-                            onClick = { onNavigateToSend(TransferPayloadType.URL) }
-                        )
-                        BentoDarkQuickTile(
-                            title = "Contact",
-                            icon = Icons.Default.Contacts,
-                            iconBg = Color(0xFF581C87),
-                            modifier = Modifier.weight(1f),
-                            onClick = { onNavigateToSend(TransferPayloadType.CONTACT) }
-                        )
-                    }
-
-                    // 3-Column Bento Inner Tiles Row 2
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        BentoDarkQuickTile(
-                            title = "Photos",
-                            icon = Icons.Default.Image,
-                            iconBg = Color(0xFF831843),
-                            modifier = Modifier.weight(1f),
-                            onClick = { onNavigateToSend(TransferPayloadType.FILE) }
-                        )
-                        BentoDarkQuickTile(
-                            title = "Docs",
-                            icon = Icons.Default.Description,
-                            iconBg = Color(0xFF7C2D12),
-                            modifier = Modifier.weight(1f),
-                            onClick = { onNavigateToSend(TransferPayloadType.FILE) }
-                        )
-                        BentoDarkQuickTile(
-                            title = "Files",
-                            icon = Icons.Default.Folder,
-                            iconBg = Color(0xFF1E1B4B),
-                            modifier = Modifier.weight(1f),
-                            onClick = { onNavigateToSend(TransferPayloadType.MULTI_FILE) }
-                        )
                     }
                 }
             }
         }
 
-        // 6. Bento Manifesto Card (Span 2)
+        // 5. Security Guarantee Banner
         item {
             BentoCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(22.dp),
                 backgroundColor = if (isDark) BentoSurfaceDark else BentoSurfaceLight,
                 elevation = 1.dp
             ) {
@@ -601,35 +378,35 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(12.dp))
                             .background(if (isDark) BentoLavenderDark else BentoLavender),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Shield,
+                            imageVector = Icons.Default.Lock,
                             contentDescription = null,
                             tint = if (isDark) PurpleSecurity else BentoLavenderText,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Zero Cloud • Air-Gapped",
-                            fontSize = 14.sp,
+                            text = "AES-256 Air-Gapped Protocol",
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Transfers happen entirely via visual light without Internet, Bluetooth or Wi-Fi sockets.",
-                            fontSize = 12.sp,
+                            text = "Zero internet, Wi-Fi, or Bluetooth sockets used. Pure visual light transmission.",
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 16.sp
+                            lineHeight = 15.sp
                         )
                     }
                 }
@@ -638,56 +415,6 @@ fun HomeScreen(
 
         item {
             Spacer(modifier = Modifier.height(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun BentoDarkQuickTile(
-    title: String,
-    icon: ImageVector,
-    iconBg: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = modifier
-            .height(72.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.08f))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(bounded = true),
-                onClick = onClick
-            )
-            .padding(8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(30.dp)
-                    .clip(CircleShape)
-                    .background(iconBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = title,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.White
-            )
         }
     }
 }

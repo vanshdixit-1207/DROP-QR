@@ -40,47 +40,54 @@ class SenderEngine(private val scope: CoroutineScope) {
     private var currentFilteredIndices: List<Int> = emptyList()
     private var activeIndexPointer: Int = 0
 
-    fun setupTransfer(manifest: TransferManifest, frames: List<QRFrame>, initialSpeedMs: Int = 160) {
+    suspend fun setupTransfer(manifest: TransferManifest, frames: List<QRFrame>, initialSpeedMs: Int = 160) {
         stopLoop()
         bitmapCache.clear()
         framesList = frames
         currentFilteredIndices = frames.map { it.frameIndex }
         activeIndexPointer = 0
 
-        _uiState.value = SenderUiState(
-            isReady = true,
-            manifest = manifest,
-            currentFrameIndex = 1,
-            totalFrames = frames.size,
-            currentFrameString = if (frames.isNotEmpty()) QRProtocolEngine.encodeFrame(frames[0]) else "",
-            isPlaying = true,
-            speedMs = initialSpeedMs,
-            targetMissingFrames = emptySet(),
-            completedLoops = 0
-        )
+        // 1. Immediately create first bitmap so there is zero delay or blank screen
+        val firstBitmap = if (frames.isNotEmpty()) {
+            val encoded = QRProtocolEngine.encodeFrame(frames[0])
+            val bmp = QRBitmapGenerator.generateQrBitmap(encoded, sizePx = 512)
+            bitmapCache[frames[0].frameIndex] = bmp
+            bmp
+        } else null
 
-        // Pre-cache first few bitmaps immediately
-        scope.launch(Dispatchers.Default) {
-            precacheBitmaps(0, minOf(5, frames.size))
-            // Render frame 1 immediately
-            val initialBitmap = getBitmapForFrame(1)
-            withContext(Dispatchers.Main) {
-                _uiState.value = _uiState.value.copy(currentBitmap = initialBitmap)
-            }
-            // Pre-cache remainder in background
-            precacheBitmaps(0, frames.size)
+        withContext(Dispatchers.Main) {
+            _uiState.value = SenderUiState(
+                isReady = true,
+                manifest = manifest,
+                currentFrameIndex = 1,
+                totalFrames = frames.size,
+                currentFrameString = if (frames.isNotEmpty()) QRProtocolEngine.encodeFrame(frames[0]) else "",
+                currentBitmap = firstBitmap,
+                isPlaying = frames.size > 1,
+                speedMs = initialSpeedMs,
+                targetMissingFrames = emptySet(),
+                completedLoops = 0
+            )
         }
 
-        startLoop()
+        // 2. Pre-cache remainder and start animation loop if multi-frame
+        if (frames.size > 1) {
+            scope.launch(Dispatchers.Default) {
+                precacheBitmaps(1, frames.size)
+            }
+            startLoop()
+        }
     }
 
     private suspend fun precacheBitmaps(start: Int, end: Int) {
         for (i in start until end) {
-            if (i in framesList.indices && !bitmapCache.containsKey(i + 1)) {
+            if (i in framesList.indices) {
                 val frame = framesList[i]
-                val encoded = QRProtocolEngine.encodeFrame(frame)
-                val bmp = QRBitmapGenerator.generateQrBitmap(encoded, sizePx = 512)
-                bitmapCache[frame.frameIndex] = bmp
+                if (!bitmapCache.containsKey(frame.frameIndex)) {
+                    val encoded = QRProtocolEngine.encodeFrame(frame)
+                    val bmp = QRBitmapGenerator.generateQrBitmap(encoded, sizePx = 512)
+                    bitmapCache[frame.frameIndex] = bmp
+                }
             }
         }
     }
@@ -96,13 +103,13 @@ class SenderEngine(private val scope: CoroutineScope) {
             bitmapCache[frameIndex] = bmp
             bmp
         } else {
-            Bitmap.createBitmap(512, 512, Bitmap.Config.RGB_565)
+            Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
         }
     }
 
     fun startLoop() {
         loopJob?.cancel()
-        if (framesList.isEmpty()) return
+        if (framesList.isEmpty() || framesList.size <= 1) return
 
         loopJob = scope.launch(Dispatchers.Default) {
             while (isActive) {
@@ -120,7 +127,7 @@ class SenderEngine(private val scope: CoroutineScope) {
                         )
                     }
 
-                    delay(_uiState.value.speedMs.toLong())
+                    delay(_uiState.value.speedMs.toLong().coerceAtLeast(40L))
 
                     activeIndexPointer++
                     if (activeIndexPointer >= currentFilteredIndices.size) {
@@ -146,6 +153,9 @@ class SenderEngine(private val scope: CoroutineScope) {
     fun togglePlayPause() {
         val newPlaying = !_uiState.value.isPlaying
         _uiState.value = _uiState.value.copy(isPlaying = newPlaying)
+        if (newPlaying && loopJob == null) {
+            startLoop()
+        }
     }
 
     fun stepNext() {
@@ -195,6 +205,7 @@ class SenderEngine(private val scope: CoroutineScope) {
                 targetMissingFrames = validIndices.toSet(),
                 isPlaying = true
             )
+            startLoop()
         }
     }
 
@@ -205,7 +216,10 @@ class SenderEngine(private val scope: CoroutineScope) {
             targetMissingFrames = emptySet(),
             isPlaying = true
         )
+        startLoop()
     }
+
+    fun getFramesList(): List<QRFrame> = framesList
 
     fun release() {
         stopLoop()

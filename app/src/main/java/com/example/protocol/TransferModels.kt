@@ -5,11 +5,36 @@ enum class TransferPayloadType(val code: String, val displayName: String) {
     URL("URL", "Web Link"),
     CONTACT("VCF", "Contact Card"),
     FILE("FIL", "Single File"),
-    MULTI_FILE("PKG", "File Package");
+    MULTI_FILE("PKG", "File Package"),
+    AUDIO("AUD", "Voice Memo"),
+    CRYPTO("SIG", "Cold Wallet / Crypto");
 
     companion object {
         fun fromCode(code: String): TransferPayloadType {
             return entries.firstOrNull { it.code.equals(code, ignoreCase = true) } ?: FILE
+        }
+    }
+}
+
+data class MissingFramesRequest(
+    val transferId: String,
+    val missingIndices: List<Int>
+) {
+    fun toQrString(): String {
+        return "DQR_REQ|$transferId|${missingIndices.joinToString(",")}"
+    }
+
+    companion object {
+        fun fromQrString(qrText: String): MissingFramesRequest? {
+            if (!qrText.startsWith("DQR_REQ|")) return null
+            val parts = qrText.split("|", limit = 3)
+            if (parts.size < 3) return null
+            val transferId = parts[1].trim()
+            val indices = parts[2].split(",")
+                .mapNotNull { it.trim().toIntOrNull() }
+                .filter { it > 0 }
+            if (transferId.isEmpty() || indices.isEmpty()) return null
+            return MissingFramesRequest(transferId, indices)
         }
     }
 }
@@ -86,7 +111,10 @@ data class TransferManifest(
     val isCompressed: Boolean,
     val overallSha256: String,
     val files: List<TransferFileItem> = emptyList(),
-    val timestamp: Long = System.currentTimeMillis()
+    val isPasswordProtected: Boolean = false,
+    val passwordHint: String = "",
+    val timestamp: Long = System.currentTimeMillis(),
+    val timeLockUntil: Long = 0L
 )
 
 data class QRFrame(

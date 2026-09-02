@@ -2,6 +2,7 @@ package com.example.transfer
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.util.Log
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -12,12 +13,7 @@ import java.util.EnumMap
 
 object QRBitmapGenerator {
 
-    private val qrWriter = QRCodeWriter()
-    private val hints = EnumMap<EncodeHintType, Any>(EncodeHintType::class.java).apply {
-        put(EncodeHintType.CHARACTER_SET, "ISO-8859-1")
-        put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.M)
-        put(EncodeHintType.MARGIN, 2)
-    }
+    private const val TAG = "QRBitmapGenerator"
 
     suspend fun generateQrBitmap(
         content: String,
@@ -26,6 +22,13 @@ object QRBitmapGenerator {
         background: Int = Color.WHITE
     ): Bitmap = withContext(Dispatchers.Default) {
         try {
+            val hints = EnumMap<EncodeHintType, Any>(EncodeHintType::class.java).apply {
+                put(EncodeHintType.CHARACTER_SET, "UTF-8")
+                put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.M)
+                put(EncodeHintType.MARGIN, 1)
+            }
+
+            val qrWriter = QRCodeWriter()
             val bitMatrix = qrWriter.encode(
                 content,
                 BarcodeFormat.QR_CODE,
@@ -45,13 +48,41 @@ object QRBitmapGenerator {
                 }
             }
 
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
             bitmap
-        } catch (_: Exception) {
-            // Fallback empty white bitmap on unexpected encoding error
-            Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.RGB_565).apply {
-                eraseColor(background)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to encode QR code bitmap: ${e.message}", e)
+            // Fallback generated bitmap with clear contrast
+            try {
+                // Try with minimal fallback
+                val hintsFallback = EnumMap<EncodeHintType, Any>(EncodeHintType::class.java).apply {
+                    put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.L)
+                    put(EncodeHintType.MARGIN, 0)
+                }
+                val bitMatrix = QRCodeWriter().encode(
+                    content.take(100),
+                    BarcodeFormat.QR_CODE,
+                    sizePx,
+                    sizePx,
+                    hintsFallback
+                )
+                val width = bitMatrix.width
+                val height = bitMatrix.height
+                val pixels = IntArray(width * height)
+                for (y in 0 until height) {
+                    val offset = y * width
+                    for (x in 0 until width) {
+                        pixels[offset + x] = if (bitMatrix[x, y]) foreground else background
+                    }
+                }
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+                bitmap
+            } catch (_: Exception) {
+                Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888).apply {
+                    eraseColor(background)
+                }
             }
         }
     }

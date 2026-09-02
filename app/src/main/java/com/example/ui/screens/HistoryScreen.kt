@@ -32,9 +32,13 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Share
+import com.example.util.MediaCategory
+import com.example.util.MediaExportHelper
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -73,6 +77,7 @@ import com.example.ui.components.GlassSegmentedControl
 import com.example.ui.theme.AppleBlue
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldGreen
+import com.example.ui.theme.LocalIsDark
 import com.example.ui.theme.PurpleSecurity
 import kotlinx.coroutines.launch
 import java.io.File
@@ -89,7 +94,7 @@ fun HistoryScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedTransferForDetail by remember { mutableStateOf<TransferEntity?>(null) }
@@ -252,44 +257,101 @@ fun HistoryScreen(
                 }
 
                 // Action Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    if (transfer.filePath != null && File(transfer.filePath).exists()) {
-                        GlassButton(
-                            text = "Share File",
-                            icon = Icons.Default.Share,
-                            isPrimary = true,
-                            modifier = Modifier.weight(1f),
+                if (transfer.filePath != null && File(transfer.filePath).exists()) {
+                    val file = File(transfer.filePath)
+                    val rawName = file.name.substringAfter('_', file.name)
+                    val category = MediaExportHelper.determineCategory(rawName, "")
+                    val saveBtnText = when (category) {
+                        MediaCategory.IMAGE, MediaCategory.VIDEO -> "Save to Gallery"
+                        MediaCategory.AUDIO -> "Save to Music"
+                        MediaCategory.DOCUMENT -> "Save to Downloads"
+                    }
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            GlassButton(
+                                text = saveBtnText,
+                                icon = Icons.Default.Download,
+                                isPrimary = true,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    val res = MediaExportHelper.saveFileToDevice(
+                                        context = context,
+                                        sourceFile = file,
+                                        originalFileName = rawName,
+                                        mimeType = ""
+                                    )
+                                    Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+                                }
+                            )
+
+                            GlassIconButton(
+                                icon = Icons.Default.OpenInNew,
+                                contentDescription = "Open file",
+                                tint = ElectricCyan,
+                                onClick = {
+                                    MediaExportHelper.openInSystemViewer(context, file, "")
+                                }
+                            )
+
+                            GlassIconButton(
+                                icon = Icons.Default.Share,
+                                contentDescription = "Share file",
+                                onClick = {
+                                    shareExistingFile(context, file)
+                                }
+                            )
+
+                            GlassIconButton(
+                                icon = Icons.Default.Delete,
+                                tint = Color(0xFFFF453A),
+                                contentDescription = "Delete record",
+                                onClick = {
+                                    scope.launch {
+                                        transferRepository.deleteTransfer(transfer.id)
+                                        selectedTransferForDetail = null
+                                    }
+                                }
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        if (transfer.detailsJson.isNotBlank()) {
+                            GlassButton(
+                                text = "Copy Text",
+                                icon = Icons.Default.ContentCopy,
+                                isPrimary = true,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("DropQR", transfer.detailsJson))
+                                    Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+
+                        GlassIconButton(
+                            icon = Icons.Default.Delete,
+                            tint = Color(0xFFFF453A),
+                            contentDescription = "Delete record",
                             onClick = {
-                                shareExistingFile(context, File(transfer.filePath))
-                            }
-                        )
-                    } else if (transfer.detailsJson.isNotBlank()) {
-                        GlassButton(
-                            text = "Copy Text",
-                            icon = Icons.Default.ContentCopy,
-                            isPrimary = true,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("DropQR", transfer.detailsJson))
-                                Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                                scope.launch {
+                                    transferRepository.deleteTransfer(transfer.id)
+                                    selectedTransferForDetail = null
+                                }
                             }
                         )
                     }
-
-                    GlassIconButton(
-                        icon = Icons.Default.Delete,
-                        tint = Color(0xFFFF453A),
-                        onClick = {
-                            scope.launch {
-                                transferRepository.deleteTransfer(transfer.id)
-                                selectedTransferForDetail = null
-                            }
-                        }
-                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -397,7 +459,7 @@ private fun HistoryItemCard(
 
 @Composable
 private fun EmptyHistoryState(tabName: String) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
     Column(
         modifier = Modifier
             .fillMaxWidth()

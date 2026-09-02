@@ -52,6 +52,7 @@ import com.example.ui.theme.AppleBlue
 import com.example.ui.theme.CyanAccent
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldGreen
+import com.example.ui.theme.LocalIsDark
 import com.example.ui.theme.PurpleSecurity
 import kotlinx.coroutines.launch
 
@@ -69,7 +70,7 @@ fun OnboardingScreen(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
 
     var currentStep by remember { mutableIntStateOf(0) }
 

@@ -54,7 +54,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.fragment.app.FragmentActivity
 import com.example.data.UserPreferencesRepository
+import com.example.util.DeviceAuthHelper
 import com.example.ui.components.AirGapBadge
 import com.example.ui.components.GlassButton
 import com.example.ui.components.GlassCard
@@ -63,6 +65,7 @@ import com.example.ui.components.GlassSegmentedControl
 import com.example.ui.theme.AppleBlue
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldGreen
+import com.example.ui.theme.LocalIsDark
 import com.example.ui.theme.PurpleSecurity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -77,7 +80,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
 
     val preferences by preferencesRepository.preferencesFlow.collectAsState()
     var tempCacheSizeStr by remember { mutableStateOf(calculateTempCacheSize(context)) }
@@ -240,6 +243,43 @@ fun SettingsScreen(
                         subtitle = "Encrypt all transferred frames with unique session keys",
                         checked = preferences.encryptionEnabled,
                         onCheckedChange = { preferencesRepository.setEncryptionEnabled(it) }
+                    )
+
+                    SettingsToggleRow(
+                        title = "Biometric & Device Lock",
+                        subtitle = "Use your phone's fingerprint, face unlock, or device PIN/Pattern",
+                        checked = preferences.appLockEnabled,
+                        onCheckedChange = { enable ->
+                            val activity = context as? FragmentActivity
+                            if (enable && activity != null) {
+                                if (!DeviceAuthHelper.canAuthenticateWithDevice(context)) {
+                                    Toast.makeText(context, "Please set up fingerprint or screen lock in phone settings first", Toast.LENGTH_LONG).show()
+                                    DeviceAuthHelper.openDeviceSecuritySettings(context)
+                                } else {
+                                    DeviceAuthHelper.promptDeviceAuthentication(
+                                        activity = activity,
+                                        title = "Enable App Lock",
+                                        subtitle = "Verify with fingerprint or phone lock to enable",
+                                        onSuccess = {
+                                            preferencesRepository.setAppLockEnabled(true)
+                                            Toast.makeText(context, "Device Lock protection enabled", Toast.LENGTH_SHORT).show()
+                                        },
+                                        onError = { error ->
+                                            Toast.makeText(context, "Verification failed: $error", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            } else {
+                                preferencesRepository.setAppLockEnabled(false)
+                            }
+                        }
+                    )
+
+                    SettingsToggleRow(
+                        title = "Auto-Save Media to Gallery",
+                        subtitle = "Automatically export received photos & videos to Gallery and files to Downloads",
+                        checked = preferences.autoSaveToGallery,
+                        onCheckedChange = { preferencesRepository.setAutoSaveToGallery(it) }
                     )
 
                     SettingsToggleRow(

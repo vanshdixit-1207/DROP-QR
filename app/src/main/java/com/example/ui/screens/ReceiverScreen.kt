@@ -20,11 +20,13 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +52,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.OpenInNew
@@ -58,6 +61,7 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -78,6 +82,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -89,22 +94,29 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.TransferRepository
 import com.example.data.UserPreferencesRepository
 import com.example.protocol.TransferPayloadType
+import com.example.util.MediaCategory
+import com.example.util.MediaExportHelper
 import com.example.scanner.ImageQRDecoder
 import com.example.scanner.QRCodeAnalyzer
 import com.example.transfer.ReceivedTransferResult
 import com.example.transfer.ReceiverEngine
 import com.example.transfer.ReceiverStateStatus
 import com.example.ui.components.AirGapBadge
+import com.example.ui.components.ChunkMatrixGrid
 import com.example.ui.components.EncryptionBadge
 import com.example.ui.components.GlassButton
 import com.example.ui.components.GlassCard
 import com.example.ui.components.GlassIconButton
 import com.example.ui.components.GlassProgressBar
+import com.example.ui.components.MissingFramesHandshakeDialog
+import com.example.ui.components.PasswordPromptDialog
 import com.example.ui.components.ScannerOverlay
+import com.example.ui.components.VoiceNotePlayerCard
 import com.example.ui.theme.AppleBlue
 import com.example.ui.theme.CyanBlueGradient
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldGreen
+import com.example.ui.theme.LocalIsDark
 import com.example.ui.theme.PurpleSecurity
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -126,7 +138,7 @@ fun ReceiverScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
 
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
 
@@ -137,6 +149,8 @@ fun ReceiverScreen(
 
     var isTorchOn by remember { mutableStateOf(false) }
     var cameraInstance by remember { mutableStateOf<Camera?>(null) }
+    var showMissingHandshakeDialog by remember { mutableStateOf(false) }
+    var showMatrixExpanded by remember { mutableStateOf(false) }
 
     // Haptic feedback trigger on successful frame / complete
     fun triggerHaptic(strong: Boolean = false) {
@@ -277,6 +291,7 @@ fun ReceiverScreen(
                     ReceiverStateStatus.RECEIVING -> "Receiving Frame ${receiverState.receivedFramesCount} of ${receiverState.totalFrames}"
                     ReceiverStateStatus.VERIFYING -> "Verifying cryptographic checksums..."
                     ReceiverStateStatus.DECRYPTING -> "Decrypting AES-256-GCM payload..."
+                    ReceiverStateStatus.AWAITING_PASSWORD -> "Protected transfer: PIN/Password required"
                     ReceiverStateStatus.SAVING -> "Saving received data..."
                     ReceiverStateStatus.ERROR -> receiverState.errorMessage
                     ReceiverStateStatus.SUCCESS -> "Transfer Complete!"
@@ -287,14 +302,18 @@ fun ReceiverScreen(
             if (receiverState.status == ReceiverStateStatus.RECEIVING ||
                 receiverState.status == ReceiverStateStatus.VERIFYING ||
                 receiverState.status == ReceiverStateStatus.DECRYPTING ||
+                receiverState.status == ReceiverStateStatus.AWAITING_PASSWORD ||
                 receiverState.status == ReceiverStateStatus.SAVING
             ) {
                 LiveReceptionCard(
                     receiverState = receiverState,
+                    showMatrixExpanded = showMatrixExpanded,
+                    onToggleMatrix = { showMatrixExpanded = !showMatrixExpanded },
+                    onRequestMissingHandshake = { showMissingHandshakeDialog = true },
                     onCancel = { receiverEngine.cancelTransfer() },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 32.dp, start = 20.dp, end = 20.dp)
+                        .padding(bottom = 24.dp, start = 16.dp, end = 16.dp)
                 )
             }
 
@@ -339,12 +358,40 @@ fun ReceiverScreen(
                 }
             }
         }
+
+        // Password Prompt Dialog
+        if (receiverState.status == ReceiverStateStatus.AWAITING_PASSWORD) {
+            PasswordPromptDialog(
+                hint = receiverState.passwordHint,
+                errorMessage = receiverState.passwordError,
+                onConfirm = { pinOrPass ->
+                    scope.launch {
+                        receiverEngine.submitPassword(pinOrPass)
+                    }
+                },
+                onDismiss = {
+                    receiverEngine.cancelTransfer()
+                }
+            )
+        }
+
+        // Missing Frames Handshake Request QR Dialog
+        if (showMissingHandshakeDialog && receiverState.missingFrames.isNotEmpty()) {
+            MissingFramesHandshakeDialog(
+                transferId = receiverState.transferId,
+                missingFrames = receiverState.missingFrames,
+                onDismiss = { showMissingHandshakeDialog = false }
+            )
+        }
     }
 }
 
 @Composable
 private fun LiveReceptionCard(
     receiverState: com.example.transfer.ReceiverUiState,
+    showMatrixExpanded: Boolean,
+    onToggleMatrix: () -> Unit,
+    onRequestMissingHandshake: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -357,7 +404,7 @@ private fun LiveReceptionCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp),
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
@@ -409,7 +456,7 @@ private fun LiveReceptionCard(
 
                 if (receiverState.missingFrames.isNotEmpty() && receiverState.receivedFramesCount > 0) {
                     Text(
-                        text = "${receiverState.missingFrames.size} frames missing",
+                        text = "${receiverState.missingFrames.size} missing",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = PurpleSecurity
@@ -423,6 +470,27 @@ private fun LiveReceptionCard(
                     color = EmeraldGreen
                 )
             }
+
+            // Interactive Chunk Matrix
+            if (receiverState.totalFrames > 0) {
+                ChunkMatrixGrid(
+                    totalChunks = receiverState.totalFrames,
+                    receivedChunks = receiverState.receivedFrameIndices,
+                    currentActiveIndex = receiverState.lastScannedFrameIndex,
+                    title = "Live Frame Beam Status"
+                )
+            }
+
+            // Two-Way Optical Handshake button if some frames missing
+            if (receiverState.missingFrames.isNotEmpty() && receiverState.receivedFramesCount > 0) {
+                GlassButton(
+                    text = "Request Missing Frames (${receiverState.missingFrames.size})",
+                    icon = Icons.Default.Sync,
+                    isPrimary = false,
+                    onClick = onRequestMissingHandshake,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 }
@@ -434,7 +502,7 @@ private fun TransferSuccessView(
     onScanAnother: () -> Unit
 ) {
     val context = LocalContext.current
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDark.current
 
     LazyColumn(
         modifier = Modifier
@@ -521,6 +589,84 @@ private fun TransferSuccessView(
 
                     // Content Preview
                     when (result.type) {
+                        TransferPayloadType.AUDIO -> {
+                            val path = result.audioFilePath
+                            if (path != null) {
+                                val audioFile = File(path)
+                                VoiceNotePlayerCard(
+                                    audioFile = audioFile,
+                                    title = "Decrypted Voice Memo"
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    GlassButton(
+                                        text = "Save to Music",
+                                        icon = Icons.Default.Download,
+                                        isPrimary = true,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = {
+                                            val res = MediaExportHelper.saveFileToDevice(
+                                                context = context,
+                                                sourceFile = audioFile,
+                                                originalFileName = audioFile.name.substringAfter('_', audioFile.name),
+                                                mimeType = "audio/m4a"
+                                            )
+                                            Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+                                        }
+                                    )
+
+                                    GlassButton(
+                                        text = "Share",
+                                        icon = Icons.Default.Share,
+                                        isPrimary = false,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = {
+                                            shareFile(context, audioFile, "audio/m4a")
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        TransferPayloadType.CRYPTO -> {
+                            val text = result.textContent ?: ""
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (isDark) Color(0x20FFFFFF) else Color(0x10000000))
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Security,
+                                        contentDescription = null,
+                                        tint = ElectricCyan,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Cold Wallet / Air-Gapped Signature Payload",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = ElectricCyan
+                                    )
+                                }
+                                Text(
+                                    text = text,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
                         TransferPayloadType.TEXT, TransferPayloadType.URL -> {
                             val text = result.textContent ?: ""
                             Box(
@@ -593,48 +739,90 @@ private fun TransferSuccessView(
                         }
 
                         TransferPayloadType.FILE, TransferPayloadType.MULTI_FILE -> {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 result.savedFiles.forEach { fileItem ->
-                                    Row(
+                                    val file = File(fileItem.localPath)
+                                    val category = MediaExportHelper.determineCategory(fileItem.name, fileItem.mimeType)
+                                    val saveLabel = when (category) {
+                                        MediaCategory.IMAGE, MediaCategory.VIDEO -> "Save to Gallery"
+                                        MediaCategory.AUDIO -> "Save to Music"
+                                        MediaCategory.DOCUMENT -> "Save to Downloads"
+                                    }
+
+                                    Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clip(RoundedCornerShape(14.dp))
+                                            .clip(RoundedCornerShape(16.dp))
                                             .background(if (isDark) Color(0x20FFFFFF) else Color(0x10000000))
                                             .padding(12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Description,
-                                                contentDescription = null,
-                                                tint = ElectricCyan
-                                            )
-                                            Column {
-                                                Text(
-                                                    text = fileItem.name,
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = MaterialTheme.colorScheme.onSurface
+                                            Row(
+                                                modifier = Modifier.weight(1f),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Description,
+                                                    contentDescription = null,
+                                                    tint = ElectricCyan
                                                 )
-                                                Text(
-                                                    text = "${fileItem.size} bytes • ${fileItem.mimeType}",
-                                                    fontSize = 11.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                Column {
+                                                    Text(
+                                                        text = fileItem.name,
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        text = "${fileItem.size} bytes • ${category.label}",
+                                                        fontSize = 11.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+
+                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                GlassIconButton(
+                                                    icon = Icons.Default.Download,
+                                                    size = 36.dp,
+                                                    contentDescription = saveLabel,
+                                                    tint = EmeraldGreen,
+                                                    onClick = {
+                                                        val res = MediaExportHelper.saveFileToDevice(
+                                                            context = context,
+                                                            sourceFile = file,
+                                                            originalFileName = fileItem.name,
+                                                            mimeType = fileItem.mimeType
+                                                        )
+                                                        Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+                                                    }
+                                                )
+
+                                                GlassIconButton(
+                                                    icon = Icons.Default.OpenInNew,
+                                                    size = 36.dp,
+                                                    contentDescription = "Open file",
+                                                    onClick = {
+                                                        MediaExportHelper.openInSystemViewer(context, file, fileItem.mimeType)
+                                                    }
+                                                )
+
+                                                GlassIconButton(
+                                                    icon = Icons.Default.Share,
+                                                    size = 36.dp,
+                                                    contentDescription = "Share",
+                                                    onClick = {
+                                                        shareFile(context, file, fileItem.mimeType)
+                                                    }
                                                 )
                                             }
                                         }
-
-                                        GlassIconButton(
-                                            icon = Icons.Default.Share,
-                                            size = 36.dp,
-                                            onClick = {
-                                                shareFile(context, File(fileItem.localPath), fileItem.mimeType)
-                                            }
-                                        )
                                     }
                                 }
                             }
@@ -652,13 +840,53 @@ private fun TransferSuccessView(
             ) {
                 if (result.savedFiles.isNotEmpty()) {
                     val primary = result.savedFiles.first()
+                    val primaryFile = File(primary.localPath)
+                    val cat = MediaExportHelper.determineCategory(primary.name, primary.mimeType)
+                    val mainSaveLabel = if (result.savedFiles.size == 1) {
+                        when (cat) {
+                            MediaCategory.IMAGE, MediaCategory.VIDEO -> "Save to Device Gallery"
+                            MediaCategory.AUDIO -> "Save to Device Music"
+                            MediaCategory.DOCUMENT -> "Save to Device Downloads"
+                        }
+                    } else {
+                        "Save All Files to Device Storage"
+                    }
+
                     GlassButton(
-                        text = "Share Transferred File",
-                        icon = Icons.Default.Share,
+                        text = mainSaveLabel,
+                        icon = Icons.Default.Download,
                         isPrimary = true,
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
-                            shareFile(context, File(primary.localPath), primary.mimeType)
+                            var savedCount = 0
+                            var lastMsg = ""
+                            result.savedFiles.forEach { item ->
+                                val res = MediaExportHelper.saveFileToDevice(
+                                    context = context,
+                                    sourceFile = File(item.localPath),
+                                    originalFileName = item.name,
+                                    mimeType = item.mimeType
+                                )
+                                if (res.isSuccess) {
+                                    savedCount++
+                                    lastMsg = res.message
+                                }
+                            }
+                            if (result.savedFiles.size > 1) {
+                                Toast.makeText(context, "Saved $savedCount files to device storage!", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, lastMsg, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    )
+
+                    GlassButton(
+                        text = "Share Transferred File",
+                        icon = Icons.Default.Share,
+                        isPrimary = false,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            shareFile(context, primaryFile, primary.mimeType)
                         }
                     )
                 }
@@ -780,3 +1008,4 @@ private fun shareFile(context: Context, file: File, mimeType: String) {
         Toast.makeText(context, "Could not open share chooser", Toast.LENGTH_SHORT).show()
     }
 }
+
