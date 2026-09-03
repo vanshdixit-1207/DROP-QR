@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -112,6 +113,7 @@ import com.example.ui.components.MissingFramesHandshakeDialog
 import com.example.ui.components.PasswordPromptDialog
 import com.example.ui.components.ScannerOverlay
 import com.example.ui.components.VoiceNotePlayerCard
+import com.example.ui.screens.TimeLockCountdownView
 import com.example.ui.theme.AppleBlue
 import com.example.ui.theme.CyanBlueGradient
 import com.example.ui.theme.ElectricCyan
@@ -588,8 +590,47 @@ private fun TransferSuccessView(
                     }
 
                     // Content Preview
-                    when (result.type) {
-                        TransferPayloadType.AUDIO -> {
+                    val isTimeLocked = result.isTimeLocked
+                    if (isTimeLocked) {
+                        val timeLockUntil = result.timeLockUntil
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isDark) Color(0x1100FFFF) else Color(0x11000000))
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Timer,
+                                contentDescription = "Time Locked",
+                                tint = ElectricCyan,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Text(
+                                text = "Time-Locked Payload",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElectricCyan
+                            )
+                            Text(
+                                text = "This data is securely locked and cannot be viewed or exported yet.",
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TimeLockCountdownView(
+                                targetTimestamp = timeLockUntil,
+                                onUnlocked = {
+                                    // Trigger recomposition if needed
+                                }
+                            )
+                        }
+                    } else {
+                        when (result.type) {
+                            TransferPayloadType.AUDIO -> {
                             val path = result.audioFilePath
                             if (path != null) {
                                 val audioFile = File(path)
@@ -828,17 +869,19 @@ private fun TransferSuccessView(
                             }
                         }
                     }
+                    }
                 }
             }
         }
 
         // Bottom Action Buttons
         item {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                if (result.savedFiles.isNotEmpty()) {
+            if (!result.isTimeLocked) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (result.savedFiles.isNotEmpty()) {
                     val primary = result.savedFiles.first()
                     val primaryFile = File(primary.localPath)
                     val cat = MediaExportHelper.determineCategory(primary.name, primary.mimeType)
@@ -890,11 +933,12 @@ private fun TransferSuccessView(
                         }
                     )
                 }
+                } // End if isTimeLocked
 
                 GlassButton(
                     text = "Scan Another Transfer",
                     icon = Icons.Default.QrCodeScanner,
-                    isPrimary = result.savedFiles.isEmpty(),
+                    isPrimary = result.savedFiles.isEmpty() || result.isTimeLocked,
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onScanAnother
                 )

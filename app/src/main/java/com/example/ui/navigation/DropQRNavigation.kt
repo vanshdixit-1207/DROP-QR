@@ -152,6 +152,9 @@ fun DropQRAppNavHost(
                         onNavigateToSettings = {
                             navController.navigate(Screen.Settings.route)
                         },
+                        onNavigateToSteganography = {
+                            navController.navigate(Screen.Steganography.route)
+                        },
                         modifier = if (showBottomNav) Modifier.padding(bottom = 84.dp) else Modifier
                     )
                 }
@@ -185,6 +188,12 @@ fun DropQRAppNavHost(
                     ReceiverScreen(
                         transferRepository = transferRepository,
                         preferencesRepository = preferencesRepository,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+
+                composable(Screen.Steganography.route) {
+                    SteganographyScreen(
                         onBack = { navController.popBackStack() }
                     )
                 }

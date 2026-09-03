@@ -128,6 +128,7 @@ import com.example.ui.theme.LocalIsDark
 import com.example.ui.theme.PurpleSecurity
 import com.example.util.AudioPlayerHelper
 import com.example.util.AudioRecorderHelper
+import com.example.util.PaperBackupHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -808,9 +809,9 @@ fun SenderScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 GlassSegmentedControl(
-                                    options = durations,
+                                    items = durations,
                                     selectedIndex = timeLockDurationIndex,
-                                    onOptionSelected = { timeLockDurationIndex = it },
+                                    onItemSelected = { timeLockDurationIndex = it },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -87,6 +88,7 @@ fun HomeScreen(
     onNavigateToReceive: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToSteganography: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isDark = LocalIsDark.current
@@ -259,7 +261,66 @@ fun HomeScreen(
             }
         }
 
-        // 4. Secondary Row: HISTORY & SETTINGS (2 Balanced Bento Cards)
+        // 3.5 Primary Action 3: Steganography (Ghost Mode Card)
+        item {
+            BentoCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(130.dp),
+                shape = RoundedCornerShape(26.dp),
+                backgroundColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                elevation = 2.dp,
+                onClick = onNavigateToSteganography,
+                testTag = "home_stego_card"
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        BentoPillBadge(
+                            text = "GHOST MODE",
+                            backgroundColor = if (isDark) Color(0x33FFFFFF) else Color(0x1A000000),
+                            textColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
+                            icon = Icons.Default.VisibilityOff
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Optical Steganography",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color.White else Color(0xFF334155)
+                        )
+                        Text(
+                            text = "Hide secret files invisibly inside normal photos",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VisibilityOff,
+                            contentDescription = "Ghost Mode",
+                            tint = if (isDark) Color.White else Color(0xFF475569),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
+        }
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),

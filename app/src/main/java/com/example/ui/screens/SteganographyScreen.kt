@@ -306,9 +306,9 @@ fun SteganographyScreen(
         // Tab Selector
         item {
             GlassSegmentedControl(
-                options = listOf("Hide Secret (Encode)", "Reveal Secret (Decode)"),
+                items = listOf("Hide Secret (Encode)", "Reveal Secret (Decode)"),
                 selectedIndex = selectedTabIndex,
-                onOptionSelected = {
+                onItemSelected = {
                     selectedTabIndex = it
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -578,9 +578,9 @@ fun SteganographyScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 GlassSegmentedControl(
-                                    options = durations,
+                                    items = durations,
                                     selectedIndex = timeLockDurationIndex,
-                                    onOptionSelected = { timeLockDurationIndex = it },
+                                    onItemSelected = { timeLockDurationIndex = it },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
